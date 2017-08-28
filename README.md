@@ -3,6 +3,7 @@ Fast 3D time series visualization tool initially designed for the zebrafish data
 
 This is a placeholder
 Current features:
+
 - 3D slicing
 - Time series scrubbing
 - Single cell time series selection
