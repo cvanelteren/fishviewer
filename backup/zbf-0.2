@@ -1,0 +1,300 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Fri May 19 23:09:30 2017
+to do:
+    Create slider object v
+    Create canvas for 3d plot v
+    connect the update value of the slider to the data v
+    
+    -vanuit terminal krijg je error dat er een Qapplicatie gemaakt moet worden
+    -de subplots zijn nog niet goed geframed
+    -goede color scheme / de visualisatie zelfs ziet er nog niet goed uit
+    - add flat button in control group (xy view)
+    
+@author: caspe
+"""
+
+from PyQt5.QtWidgets import QGroupBox, QWidget, QSlider, QHBoxLayout, QDialog, QGridLayout, QLabel, QApplication, QSpinBox, QLineEdit, QPushButton
+from PyQt5.QtCore import Qt
+from vispy import scene, visuals, app, gloo
+#app.use_app('pyqt5').
+#import pylab as plt
+#import matplotlib.pyplot as plt
+from numpy import *
+from matplotlib.pyplot import cm
+from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+#from matplotlib.figure import Figure
+from tqdm import tqdm
+from seaborn import color_palette
+#plt.ioff()
+#print(plt.matplotlib.is_interactive())
+# to do : 
+#    Qapplication moet nog worden opgezet
+#    De plots in vispy zijn nu niet goed gezoomed en de resolutie vind ik nog niks
+  
+
+    
+    
+class Line(scene.SceneCanvas):
+    def __init__(self, lineData):
+        scene.SceneCanvas.__init__(self, keys = 'interactive', size = (300,200), show = False)
+        self.unfreeze()
+        view          = self.central_widget.add_view()
+        view.bgcolor  = 'black'
+        view.camera   = 'panzoom'                                               # 2d view problem does  not fill entire screen
+        view.padding  = 10
+
+
+        x        = list(range(len(lineData)))                                   #place holder for time
+        lineData = vstack((x, lineData.flatten())).T
+        line = scene.visuals.Line(pos = lineData,\
+                                  width = 2,\
+                                  color = '#0033cc',\
+                                  parent = view.scene,\
+                                  method = 'gl',\
+                                  antialias = True)
+        
+        
+        # add grid
+        scene.visuals.GridLines(color = (1,1,1,.5), parent = view.scene)
+        
+        # update viewbox
+        ylim = [lineData.min(0)[-1], lineData.max(0)[-1]]
+        view.camera.viewbox.camera.set_range(x = [0, len(lineData)], y = ylim)
+        
+        tmp = vstack(([0,0], ylim))
+        red = (1,0,0,.5)
+        self.scrub     = scene.visuals.LinePlot(data = tmp.T, width = 20, face_color = red, color = red, symbol = 'disc', parent = view.scene)
+        self.view      =  view
+        self.ylim      =  ylim
+          
+
+class Scatter(scene.SceneCanvas):
+    '''
+    This object contains the 3d scatter data points
+    '''
+    
+    def __init__(self, coordinates, data):
+        scene.SceneCanvas.__init__(self, keys = 'interactive', show = False, size = (400,400), vsync = True)
+        self.unfreeze() # laat toe dat je andere modules kan toevoegen
+        
+        # camera, background setup
+        view          = self.central_widget.add_view()
+        view.bgcolor  = 'black'
+        view.camera   = 'turntable'
+        view.padding  = 0
+
+        
+        
+        # init scatters
+        self.locs        = coordinates
+        self.t           = 0
+        self.nC, self.nT = data.shape
+        
+        #create colormap
+        nColors       = 10
+#        self.colormap = array([cm.RdBu(int(i)) for i in linspace(0,255,nColors)])
+        colormap = color_palette('RdBu_r', nColors)
+#        colormap = [c + (1,) for c in colormap]
+        self.colormap = array(colormap)
+        
+        print('Generating the color map')
+        # rescale to 0,1 parse to colormap, and hack in the alpha as activity
+        cdata        = (data - data.min(0)) / (data.max(0) - data.min(0))  # rescale 0,1
+        tmp          = cm.viridis(cdata)
+        tmp[...,-1]  = cdata
+        print('Concatenating data')
+        self.cdata   = concatenate((tmp, data[..., None]), axis = -1) # prevent double storage
+        
+        # set markers
+        self.mark = scene.visuals.Markers(pos = self.locs,\
+                                          symbol = 'disc',\
+                                          face_color = self.cdata[:, self.getT(), :4],\
+                                          parent = view.scene)
+                                          # size = abs(self.data[:,0]))
+        
+        # center the camera in the center of the grid
+        minmax = array([(i.min(), i.max()) for i in self.locs.T])
+        view.camera.viewbox.camera.set_range(x = minmax[0,:],\
+                                             y = minmax[1,:],\
+                                             z = minmax[2,:])
+        
+        # update view
+        self.view     = view
+
+  
+    def getT(self):
+        return self.t
+    def setT(self, value):
+        if value > self.nT:
+            print('Value error\nRange {0}-{1}'.format(0, self.nT))
+        else:    
+            self.t = value
+class Window (QDialog):
+    def __init__(self, coordinates, data, motorAndBehavior):
+        # init window        
+        QDialog.__init__(self)
+        self.resize(800,800)
+        self.setWindowTitle('zebra fish viewer')
+        # attributes
+        self.coordinates = coordinates
+        self.dims        = coordinates.max(0)
+        self.plotIdx     = range(coordinates.shape[0]) # used for plotting Z-slicing etc
+        # add slider
+        horSlider = QSlider(Qt.Horizontal)
+        horSlider.setMinimum(0)
+        horSlider.setMaximum(data.shape[-1] - 1)
+
+        horSlider.setTickPosition(QSlider.TicksBothSides)
+#        horSlider.setSingleStep(1)
+        horSlider.setTickInterval(100)
+        horSlider.setGeometry(10,10, 0,0)
+        self.lab = QLabel(parent = horSlider)
+        self.lab.setText(str(horSlider.minimum()) * len(str(horSlider.maximum()))) #tmp hacky way; if you dont set the size the larger number will be clipped
+        self.lab.setAlignment(Qt.AlignHCenter)
+        self.lab.setStyleSheet("QLabel {background-color: red;}")
+        self.horSlider = horSlider
+        self.scatter   = Scatter(coordinates, data)
+        
+        # add subplot lines
+        lineCanvs  = []
+        self.lines = []
+        for data in motorAndBehavior:
+            line = Line(data)
+            lineCanvs.append(line.native)
+            self.lines.append(line)
+        horSlider.valueChanged.connect(self.updateAll)
+        # gridlayout (sim. matplotlib)
+        layout = QGridLayout()
+        
+        # init control group
+        self.createControlGroup('Controls')
+        
+        # add widgets to the framework
+        coordinates = [(1,0), (2,0), (3,0), (4,0), (5,0)]
+#        widgets     = [scatter.native, canv.native, horSlider]
+        widgets     = [self.scatter.native, *lineCanvs, horSlider, self.controlGroup]
+        [layout.addWidget(w, *c) for c, w in zip(coordinates, widgets)]
+
+
+        self.widgets    = widgets
+        # initialize layout
+        self.layout     = layout
+        self.setLayout(layout) # needed
+        self.show()
+
+    def createControlGroup(self, title):
+        # create group add title
+        self.controlGroup = QGroupBox(title)
+        label = QLabel('Start-stop slice:')
+        
+        self.ZSliceControl = QLineEdit()
+        self.ZSliceControl.objectNameChanged.connect(self.selectSlice)
+        self.sliceButton        = QPushButton('Slice')
+        self.sliceButton.clicked.connect(self.selectSlice)
+        
+        self.flatButton = QPushButton('Flatten')
+        self.flatButton.clicked.connect(self.on_flatten)
+        
+        coordinates = [(0,0), (0,1), (0,2),(1,0)]
+        widgets     = [label, self.ZSliceControl, self.sliceButton, self.flatButton]
+        controlLayout = QGridLayout()
+        [controlLayout.addWidget(widget, *coordinate) for widget, coordinate in zip(widgets, coordinates)]
+        self.controlGroup.setLayout(controlLayout)
+        
+#        self.controlGroup = QGroupBox(title)
+#        minLab = QLabel('Start slice: ')
+#        maxLab = QLabel('Stop slice: ')
+#        # create boxes
+#        self.minZ = QSpinBox()
+#        self.maxZ = QSpinBox()
+#        # set ranges
+#        self.minZ.setRange(0, self.dims[-1]) # note sliders are in int, check coordinate structure
+#        self.maxZ.setRange(0, self.dims[-1])
+#        # step size
+#        self.minZ.setSingleStep(1)
+#        self.maxZ.setSingleStep(1)
+#        # connect with change detect
+#        self.minZ.valueChanged.connect(self.selectSlice)
+#        self.maxZ.valueChanged.connect(self.selectSlice)
+# 
+#        widgets     = [minLab, self.minZ, maxLab, self.maxZ]
+#        coordinates = [(0,0), (0,1), (0,2), (0,3)]
+#        controlLayout = QGridLayout()
+#        # add to gridd
+#        [controlLayout.addWidget(widget, *coordinate) for widget, coordinate in zip(widgets, coordinates)]        
+#        self.controlGroup.setLayout(controlLayout)
+    
+    def selectSlice(self):
+        '''
+        Controls slice selection
+        Checks for boundary conditions
+        Slices are assumed to be integer values(!)
+        '''
+        import itertools
+        # split text on numbers and non-numbers
+        text = ["".join(x) for _, x in itertools.groupby(self.ZSliceControl.text(), key = str.isdigit)]
+        # get the correct dimensions
+        zdims = [0, self.dims[-1]]
+        # test boundary conditions
+        try:
+            # note this has the added benefit that if len(text) === 1, single slice is returned
+            minZ, maxZ  = int(text[0]), int(text[-1])
+            if minZ > maxZ:
+                print('Error, minimal slice should be smaller than max')
+            #update markers
+            elif zdims[0] <= minZ <= zdims[-1] and zdims[0] <= maxZ <= zdims[-1] :
+                self.plotIdx = where(logical_and(self.scatter.locs[...,-1] >= minZ, self.scatter.locs[...,-1] <= maxZ))[0]
+                self.scatter.mark.set_data(pos = self.scatter.locs[self.plotIdx , :],
+                                           face_color = self.scatter.cdata[self.plotIdx , self.scatter.getT(), :4])
+            else:
+                print('Error, z-range is {0}-{1}'.format(zdims[0], zdims[1]))
+                
+        except ValueError:
+            print('Input not understood\nFormat should be min Z - max Z')
+    
+    def on_flatten(self):
+        self.scatter.view.camera.elevation = 90
+        self.scatter.view.camera.azimuth   = 0
+        
+  
+    def updateAll(self, value):
+        '''
+        Binds together the slider value with the corresponding graphs
+        '''
+        # update markers
+        self.scatter.setT(value)
+        self.scatter.mark.set_data(\
+                                   pos        = self.scatter.locs[self.plotIdx,:],\
+                                   face_color = self.scatter.cdata[self.plotIdx, self.scatter.getT(), :4])         
+        # update slider text
+        self.lab.setText(str(value))  
+        # update scrub lines
+        [line.scrub.set_data(data = vstack(([value, value], line.ylim)).T) for line in self.lines]
+
+    def closeEvent(self, event):
+        self.deleteLater()
+        
+import sys
+if __name__ =='__main__':
+    tmp = random.randn(10000,3, 10) 
+    # load locations
+    N = 3 
+    a = eye(N)
+    t = ones((N,1))
+    tt = concatenate((a, t), axis = 1)
+#    app = QApplication(sys.argv)
+    coordinates = random.randint(0, 100, size = (1000,3))
+    nC = coordinates.shape[0]
+    nT = 550
+#    data = sin(array([linspace(0, nT, nT) for i in range(nC)]) * 2 * pi) + random.randn(nC, nT) * 5 - 2
+    data = random.randn(nC, nT) * 10 -10
+    behaviorData = random.randn(nT,1)
+    motorData    = random.randn(*behaviorData.shape)
+    
+    w = Window(coordinates,data, [motorData, behaviorData])
+    
+    w.show()
+#    app.exec_()
+    
+#%%
