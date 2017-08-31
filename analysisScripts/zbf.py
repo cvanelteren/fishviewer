@@ -942,7 +942,7 @@ if __name__ =='__main__':
                                      'label' : 'motor dummy data'}}
     cfg1 = {'coordinates': cc, 'data' :{**tmpScatterData, **tmpPlotData}} 
     cfg1 = {'coordinates': coordinates, 'data' : {'scatter main' : {'data' : tmp, 'x': z, 'xlabel': 'distance $\mu$m'}}}
-    cfg1 = {'coordinates' : coordinates[:,:], 'data' : {'scatter main': {'data': abs(rr[:,None]), 'cluster' : False}}}
+#    cfg1 = {'coordinates' : coordinates[:,:], 'data' : {'scatter main': {'data': abs(rr[:,None]), 'cluster' : False}}}
     w    = createQt(cfg1)
 #    s = w.plots['scatter'][0]
 
