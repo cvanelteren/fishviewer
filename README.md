@@ -29,6 +29,6 @@ scatter data
 - Scroll wheel will zoom
 - Mouse drag will pan the camera
 # Latest version showcase
-![pageIntoGif][Video/viewer_320x180.gif]
+![pageIntoGif](Video/viewer_320x180.gif)
 # Old version showcase
 ![pageIntoGif](Video/pageIntro.gif)
