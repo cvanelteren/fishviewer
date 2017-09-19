@@ -28,6 +28,7 @@ scatter data
 - Shift + mouse drag will shift center point of camera
 - Scroll wheel will zoom
 - Mouse drag will pan the camera
-
+# Latest version showcase
+![pageIntoGif][Video/Zebrafishviewer_Casper_van_Elteren.mp4]
 # Old version showcase
 ![pageIntoGif](Video/pageIntro.gif)
