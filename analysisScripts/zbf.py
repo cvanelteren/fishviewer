@@ -6,11 +6,24 @@ Created on Wed May 31 14:49:09 2017
 @author: Casper van Elteren
 
 The zebrafish viewer takes as input:
-    coordinates: the coordinates of the scatter plot
     data:   a dict containing containing a subdict
-            The subdict contains at minimum
-            datatype: line or scatter (make name unique)
-            data    : containing the data entries
+            Minimum input fields:
+                datatype        : line or scatter (make name unique)
+                data            : containing the data entries
+            Data types:
+                scatter:
+                    Minimal input:
+                            coordinates     : where in 3d to plot them
+                    Optional inputs:
+                            x      : time axis for figures
+                            xlabel : corresponding figure label
+                line:
+                    Mininal input:
+                        data
+                    Optional data:
+                        ...TBC
+
+            
     
 """
 # TODO: remove the coordinate dependency and put it into the scatter class, 
@@ -169,7 +182,7 @@ class Scatter(scene.SceneCanvas):
         view.padding  = 0
 
         # init scatters
-        self.locs         = coordinates.copy()
+        self.coordinates         = coordinates.copy()
         self.t           = 0
         self.nC, self.nT = data.shape[:2]
         self.plotIdx     = arange(0, self.nC)
@@ -213,10 +226,7 @@ class Scatter(scene.SceneCanvas):
         colors     = colormap.map(colorScale[:,None])
         
         self.cdata = zeros((*data.shape, 5))
-#        self.cdata[...,-1] = data
-        
         mindata = data.min(); maxdata = data.max()
-        print(mindata, maxdata)
         if  not abs(data.min()) >= 0 and not abs(data.max()) <= 1:
             print(allclose(data.min(), -1, 1e-2),  allclose(data.max(), 1, 1e-2))
             print('normalizing data')
@@ -252,10 +262,10 @@ class Scatter(scene.SceneCanvas):
         ax = scene.visuals.XYZAxis(parent = view.scene)
         tr = visuals.transforms.MatrixTransform()
         ax.transform = tr
-        ax.transform.scale(self.locs.max(0))
+        ax.transform.scale(self.coordinates.max(0))
         # set markers
         # CONFIG FOR SCATTERS
-        self.cfg = {'pos'       : self.locs,
+        self.cfg = {'pos'       : self.coordinates,
                     'symbol'    :'disc',
                     'face_color':self.cdata[:, self.getT(), :4],
                     'edge_color': (1,1,1,.01),
@@ -276,7 +286,7 @@ class Scatter(scene.SceneCanvas):
         self.events.key_press.connect(self.on_key_press)
 
         # center the camera in the center of the grid
-        minmax = array([(i.min(), i.max()) for i in self.locs.T])
+        minmax = array([(i.min(), i.max()) for i in self.coordinates.T])
         view.camera.viewbox.camera.set_range(x = minmax[0,:],\
                                              y = minmax[1,:],\
                                              z = minmax[2,:])
@@ -343,7 +353,7 @@ class Scatter(scene.SceneCanvas):
                 print(self.plotActive)
                 color             = cm.Accent(self.plotActive) # TODO: cannot have more than 255 plots open
                 fig.suptitle('Selection {0}'.format(self.plotActive), color = color)
-                cfg = {'pos': self.locs[[idx], :],
+                cfg = {'pos': self.coordinates[[idx], :],
                        'face_color': color,
                        'size':       self.cfg['size'] * 3, # make marker slightly bigger to show what is in the selection
                        'edge_color': None}
@@ -370,7 +380,7 @@ class Scatter(scene.SceneCanvas):
                     labels.append('Cell {0}'.format(idx))
                     ax.legend(labels)
                     # update indices
-                    activePlot['cfg']['pos'] =  vstack((activePlot['cfg']['pos'], self.locs[[idx],:]))
+                    activePlot['cfg']['pos'] =  vstack((activePlot['cfg']['pos'], self.coordinates[[idx],:]))
                     activePlot['markers'].set_data(**activePlot['cfg'])
                     activePlot['indices'] = hstack((activePlot['indices'], idx))
                     # update the plot
@@ -438,10 +448,10 @@ class Scatter(scene.SceneCanvas):
 #        viewBoxPos = self.view.scene.transform.imap(viewBoxPos)[:3]
 
 #        viewBoxPos[1:] *= array([azimuth, elevation])
-        distance   = sqrt(sum((self.locs[self.plotIdx,:2] - viewBoxPos)**2,1))
+        distance   = sqrt(sum((self.coordinates[self.plotIdx,:2] - viewBoxPos)**2,1))
         idx        = argmin(distance)
         idx        = self.plotIdx[idx]
-        print('Scene coordinate {0}\nMarker coordinates {1}'.format(viewBoxPos, self.locs[idx, ...]))
+        print('Scene coordinate {0}\nMarker coordinates {1}'.format(viewBoxPos, self.coordinates[idx, ...]))
         return idx
 
     def setPlotIdx(self, threshold):
@@ -477,19 +487,19 @@ class Scatter(scene.SceneCanvas):
         try:
 #            from visualize import plotLocations
 #            plotLocations(self.locs[self.tmp,:])
-            self.plotIdx = Delaunay(roi[:,:2]).find_simplex(self.locs[:, :2]) >= 0 #figure this out
+            self.plotIdx = Delaunay(roi[:,:2]).find_simplex(self.coordinates[:, :2]) >= 0 #figure this out
         except scipy.spatial.qhull.QhullError: #tmp hack to assume you want slice in y direction
             tmp = []
             self.roi = roi
             for c in roi:
-                tmp.append(logical_and(self.locs[:,0] < c[0], self.locs[:,1] < c[1]))
+                tmp.append(logical_and(self.coordinates[:,0] < c[0], self.coordinates[:,1] < c[1]))
 
             idx = where(all(tmp))
             print(idx, tmp)
             self.plotIdx = idx
         #update config file
         updateCfg = {'face_color': self.cdata[self.plotIdx, self.getT(), :4],
-                     'pos':  self.locs[self.plotIdx,:]}
+                     'pos':  self.coordinates[self.plotIdx,:]}
         self.updateCfg(self.cfg, updateCfg)
         # show markers
         self.mark.set_data(**self.cfg)
@@ -499,18 +509,18 @@ class Menu(QMenu):
     def __init__(self, parent, *args, **kwargs):
         print(parent)
         QMenu.__init__(parent = parent, *args, **kwargs)
+        
+        
 class ZebraFishViewer (QMainWindow):
-    def __init__(self, coordinates, data, cmap = 'summer'):
+    def __init__(self, data, cmap = 'summer'):
         # init window
         QMainWindow.__init__(self)
         screenResolution = QDesktopWidget().screenGeometry(-1)
+        
+        # screen resolution fix
         self.resize(screenResolution.width() * .25,screenResolution.height() * .5) # TODO: changes this
-        self.setWindowTitle('zebra fish viewer')
-        # attributes
-        self.coordinates = coordinates
-#        tmp = unique(coorind)
-        self.dims        = coordinates.max(0)
-        self.plotIdx     = range(coordinates.shape[0]) # used for plotting Z-slicing etc
+        self.setWindowTitle('zebrafish viewer')
+        
         # add slider
         horSlider = QSlider(Qt.Horizontal)
         self.lab = QLabel(parent = horSlider)
@@ -524,9 +534,10 @@ class ZebraFishViewer (QMainWindow):
         for plotType, cfg in data.items():
             data = cfg['data']
             if 'scatter' in plotType:
+                # create list entry if it does not exist
                 if 'scatter' not in plots.keys():
                     plots['scatter'] = []
-                widget = Scatter(coordinates, **cfg, cmap = cmap, parent = self)
+                widget = Scatter(**cfg, cmap = cmap, parent = self)
                 plotType = 'scatter' #TODO: maybe clean this up
             elif 'line' in plotType:
                 # make personal entry in plot indices
@@ -556,15 +567,16 @@ class ZebraFishViewer (QMainWindow):
             maxT = len(data) - 1
             
         horSlider.setMaximum(maxT)
-        self.lab.setText(str(horSlider.minimum()) * len(str(horSlider.maximum()))) # TODO: if you dont set the size the larger number will be clipped
+#        self.lab.setText(str(horSlider.minimum()) * len(str(horSlider.maximum()))) # TODO: if you dont set the size the larger number will be clipped
         horSlider.setTickPosition(QSlider.TicksBothSides)
         horSlider.setTickInterval(maxT //10)
         self.nT = maxT
         # horSlider.setGeometry(10,10, 0,0)
         widgets.append(horSlider)
         # init control group
-        controlGroup = self.createControlGroup('Controls')
-        widgets.append(controlGroup)
+        if len(self.plots['scatter']) != 0:
+            controlGroup = self.createControlGroup('Controls', self.plots['scatter'][0].coordinates)
+            widgets.append(controlGroup)
         horSlider.valueChanged.connect(self.updateAll)
         # add widgets - generate and put it in layout
         step = 1
@@ -599,13 +611,13 @@ class ZebraFishViewer (QMainWindow):
 #        menu.addAction('test', self.about)
 #        print('test')
         self.menuBar().addMenu(menu)
-    def createControlGroup(self, title):
+    def createControlGroup(self, title, coordinates):
         """
         Adds control group
         """
         # TODO: this needs a cleaning up, i.e. maybe controller function t hat makes the button 
         # create group add title
-        zs = unique(self.coordinates[...,-1])
+        zs = unique(coordinates[...,-1])
         controlGroup = QGroupBox(title)
         ZSliceControl = QLineEdit()
         ZSliceControl.objectNameChanged.connect(self.selectSlice)
@@ -713,11 +725,13 @@ class ZebraFishViewer (QMainWindow):
         import itertools
         # split text on numbers and non-numbers
         text = self.getDigits(self.ZSliceControl)
-        # get the correct dimensions
-        zdims = [0, self.dims[-1]]
-        zs = unique(self.coordinates[...,-1])
+
         # TODO: update this for independent scatter (multiple) (done?)
         for scatter in self.plots['scatter']:
+            # get the correct dimensions from the scatter plot
+            zs = unique(scatter.coordinates[...,-1])
+            zdims = [zs.min(), 
+                     zs.max()]
             # test boundary conditions
             try:
                 # note this has the added benefit that if len(text) === 1, single slice is returned
@@ -729,7 +743,7 @@ class ZebraFishViewer (QMainWindow):
                 #update markers
                 elif zdims[0] <= minZ <= zdims[-1] and zdims[0] <= maxZ <= zdims[-1] :
                     # find intersection of locations and layer
-                     idx = where(logical_and(scatter.locs[:,-1] >= minZ, scatter.locs[:,-1] <= maxZ))[0]
+                     idx = where(logical_and(scatter.coordinates[:,-1] >= minZ, scatter.coordinates[:,-1] <= maxZ))[0]
                      print('Slicing {0} - {1}'.format(minZ, maxZ))
                      if len(idx) == 0: # slice is empty
                          scatter.mark.visible = False
@@ -739,7 +753,7 @@ class ZebraFishViewer (QMainWindow):
                          allCell = tuple(arange(0, scatter.nC))
                          idx     = tuple(idx)
                          scatter.plotIdx = list(set(allCell) & set(idx))
-                         coordinates = scatter.locs[scatter.plotIdx, :]
+                         coordinates = scatter.coordinates[scatter.plotIdx, :]
                          minmax      = array([coordinates.min(0), coordinates.max(0)]).T
                          scatter.view.camera.set_range(x = minmax[0,:], y = minmax[1,:], z = minmax[2,:])
 
@@ -832,7 +846,7 @@ class ZebraFishViewer (QMainWindow):
         if 'scatter' in self.plots.keys():
             for scatter in self.plots['scatter']:
                 scatter.setT(value)
-                updateCfg = {'pos': scatter.locs[scatter.plotIdx,:], 'face_color' :  scatter.cdata[scatter.plotIdx, scatter.getT(), :4]}
+                updateCfg = {'pos': scatter.coordinates[scatter.plotIdx,:], 'face_color' :  scatter.cdata[scatter.plotIdx, scatter.getT(), :4]}
                 scatter.updateCfg(scatter.cfg, updateCfg)
                 scatter.mark.set_data(**scatter.cfg)
                 scatter.view.scene.update()
@@ -936,12 +950,12 @@ if __name__ =='__main__':
 #    data = array(Pool(cpu_count()).map(calcCdata, data))
     # note weird names to prevent overwriting
     appp = QCoreApplication.instance()
-    tmpScatterData = {'scatter main': {'data' : ddd, 'xlabel': 'distance micrometer '}}
+    tmpScatterData = {'scatter main': {'data' : ddd, 'coordinates' : cc, 'xlabel': 'distance micrometer '}}
     tmpPlotData    = {'line motor' :
                                     {'data' : motorData,
                                      'label' : 'motor dummy data'}}
-    cfg1 = {'coordinates': cc, 'data' :{**tmpScatterData, **tmpPlotData}} 
-    cfg1 = {'coordinates': coordinates, 'data' : {'scatter main' : {'data' : tmp, 'x': z, 'xlabel': 'distance $\mu$m'}}}
+    cfg1 = {'data' :{**tmpScatterData, **tmpPlotData}} 
+#    cfg1 = {'coordinates': coordinates, 'data' : {'scatter main' : {'data' : tmp, 'x': z, 'xlabel': 'distance $\mu$m'}}}
 #    cfg1 = {'coordinates' : coordinates[:,:], 'data' : {'scatter main': {'data': abs(rr[:,None]), 'cluster' : False}}}
     w    = createQt(cfg1)
 #    s = w.plots['scatter'][0]

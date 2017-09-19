@@ -1,5 +1,6 @@
 
 
+
 # -*- coding: utf-8 -*-
 """
 Created on Fri May 12 17:24:32 2017
@@ -174,7 +175,7 @@ def createSuperVox(coordinates,
     tmp = [tuple(row) for row in digits] # convert in to tuples
     tmp = array(list(set(tmp)))         # convert into array
     # add idx of coordinate to the tuple key
-    for c in tmp:
+    for c in tqdm(tmp):
         idx = where(all(digits == c,1))[0]
         MAP[tuple(c)] = idx
     A = []

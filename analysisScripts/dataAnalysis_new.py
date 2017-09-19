@@ -8,6 +8,7 @@ Created on Tue Aug 15 18:06:46 2017
 # %%
 from dataAnalysisFunctions import *
 from scipy import ndimage
+import sklearn
 assert 0 
 # %%
 #import dask.array as darray
@@ -54,9 +55,30 @@ try:
 except:
     pass
 # %%
+tmp = '/media/casper/External/ZebrafishRecordings/sample_data_code_spontaneous'
+c = []
+d = [] 
 
+for i in os.walk(tmp):
+    print(i[0])
+    try:
+        j = loadCoordinates(i[0] + '/')[0]
+        c.append(j)
+    except:
+        continue
+# %%
+j = sklearn.neighbors.NearestNeighbors(1).fit(c[0])
+p = {i: [] for i in arange(len(c[0]))}
+for ci in c:
+    _, n = j.kneighbors(ci)
+    for idx, ni in zip(ci, n):
+        p[ni[0]].append(idx)
+pp = []
+for i in arange(len(c[0])):
+    pp.append(mean(p[i], axis = 0))
+pp = array(pp)
 # %% meeting wednesday 27 - 7
-data  = removeBaseline(data)
+data  = removeBaseline(data[:, :100])
 #zdata = stats.zscore(data, 1)
 
 # %%
@@ -69,10 +91,29 @@ subdata = zeros((c.shape[0], data.shape[1]))
 for i, idx in enumerate(tqdm(mp.values())):
     subdata[i,:] = data[idx,:].mean(0)
 # %%
+f = lambda x, a,b,c: a * exp(-b*x) + c
+theta = 1e-5
+h = []
+for ai in tqdm(a):
+    try:
+        p   = scipy.optimize.curve_fit(f, bins, ai)[0]
+        idx = where(diff(f(bins, *p), 2) <= theta)[0][0]
+        h.append(bins[idx])
+    except:
+        h.append(0)
+h = array(h)
+hh = (h-h.min())/(h.max() - h.min())
+# %%
 #cfg = {'coordinates' : c, 'data' : {'scatter main': {'data':subdata}}}
-cfg = {'coordinates' : coordinates[:,:], 'data' : {'scatter main': {'data': data[:, conditions['omr'][0]], 'cluster' : False}}}
+cfg = {'data' : {'scatter main': {'data': data, 'coordinates': coordinates, 'cluster' : False}}}
 w = createQt(cfg)
-
+# %%
+p = []
+for i in mp.values():
+    points = h[i,:]
+    p.append(median(points, axis = 0))
+p = array(p)
+print(p.shape)
 # %%
 def singleCor(cellIdx):
     global zdata, bins, coordinates
