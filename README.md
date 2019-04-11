@@ -1,3 +1,4 @@
+![pageIntoGif](Video/viewer_320x180.gif)
 # Welcome to the fish page
 Fast 3D time series visualization tool initially designed for the zebrafish dataset[Danio rerio].
 
@@ -28,7 +29,6 @@ scatter data
 - Shift + mouse drag will shift center point of camera
 - Scroll wheel will zoom
 - Mouse drag will pan the camera
-# Latest version showcase
-![pageIntoGif](Video/viewer_320x180.gif)
+
 # Old version showcase
 ![pageIntoGif](Video/pageIntro.gif)
